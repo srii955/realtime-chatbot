@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <style>
+        body { margin:0; font-family: Arial; background:#ece5dd; }
+        .container { display:flex; height:100vh; }
+
+        .chat-box {
+            width:50%;
+            display:flex;
+            flex-direction:column;
+            border-right:1px solid #ccc;
+        }
+
+        .header {
+            background:#075e54;
+            color:white;
+            padding:10px;
+        }
+
+        .messages {
+            flex:1;
+            padding:10px;
+            overflow:auto;
+            display:flex;
+            flex-direction:column;
+        }
+
+        .msg {
+            max-width:60%;
+            margin:5px;
+            padding:8px;
+            border-radius:8px;
+        }
+
+        .left { background:white; align-self:flex-start; }
+        .right { background:#dcf8c6; align-self:flex-end; }
+
+        .tick {
+            font-size:10px;
+            text-align:right;
+            color:gray;
+        }
+
+        .input {
+            display:flex;
+            padding:10px;
+            background:#f0f0f0;
+        }
+
+        .input input {
+            flex:1;
+            padding:10px;
+            border-radius:20px;
+            border:none;
+        }
+
+        .input button {
+            margin-left:10px;
+        }
+
+        .typing { font-size:12px; color:gray; }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="chat-box">
+        <div class="header">User1</div>
+        <div id="chat1" class="messages"></div>
+        <div id="typing1" class="typing"></div>
+
+        <div class="input">
+            <input id="msg1">
+            <button onclick="sendMsg('User1')">Send</button>
+        </div>
+    </div>
+
+    <div class="chat-box">
+        <div class="header">User2</div>
+        <div id="chat2" class="messages"></div>
+        <div id="typing2" class="typing"></div>
+
+        <div class="input">
+            <input id="msg2">
+            <button onclick="sendMsg('User2')">Send</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const ws = new WebSocket("ws://" + window.location.host + "/ws/chat/user1_user2/");
+
+let lastUser1Msg = null;
+let lastUser2Msg = null;
+
+ws.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+
+    // ===== TYPING =====
+    if (data.type === "typing") {
+        if (data.username === "User1") typing2.innerText = data.typing ? "typing..." : "";
+        if (data.username === "User2") typing1.innerText = data.typing ? "typing..." : "";
+        return;
+    }
+
+    // ===== SEEN =====
+    if (data.type === "seen") {
+
+        if (data.seen_by === "User2") {
+            let tick = document.querySelector("#chat1 #tick-" + data.message_id);
+            if (tick) tick.style.color = "blue";
+        }
+
+        if (data.seen_by === "User1") {
+            let tick = document.querySelector("#chat2 #tick-" + data.message_id);
+            if (tick) tick.style.color = "blue";
+        }
+
+        return;
+    }
+
+    // ===== MESSAGE =====
+    if (data.type === "message") {
+
+        let m1 = createMsg(data, "User1");
+        let m2 = createMsg(data, "User2");
+
+        chat1.appendChild(m1);
+        chat2.appendChild(m2);
+
+        if (data.sender === "User1") {
+            lastUser2Msg = data.message_id;
+            let tick = document.querySelector("#chat1 #tick-" + data.message_id);
+            if (tick) tick.innerText = "✔✔";
+        }
+
+        if (data.sender === "User2") {
+            lastUser1Msg = data.message_id;
+            let tick = document.querySelector("#chat2 #tick-" + data.message_id);
+            if (tick) tick.innerText = "✔✔";
+        }
+    }
+};
+
+function createMsg(data, user) {
+    let msg = document.createElement("div");
+
+    if (data.sender === user) {
+        msg.className = "msg right";
+        msg.innerHTML = `
+            ${data.message}
+            <div class="tick" id="tick-${data.message_id}">✔</div>
+        `;
+    } else {
+        msg.className = "msg left";
+        msg.innerText = data.message;
+    }
+
+    return msg;
+}
+
+function sendMsg(user) {
+    let input = document.getElementById(user === "User1" ? "msg1" : "msg2");
+
+    if (!input.value.trim()) return;
+
+    ws.send(JSON.stringify({
+        message: input.value,
+        username: user
+    }));
+
+    input.value = "";
+}
+
+// ===== SEEN TRIGGER =====
+msg1.addEventListener("focus", () => {
+    if (lastUser1Msg) {
+        ws.send(JSON.stringify({
+            seen: true,
+            message_id: lastUser1Msg,
+            username: "User1"
+        }));
+        lastUser1Msg = null;
+    }
+});
+
+msg2.addEventListener("focus", () => {
+    if (lastUser2Msg) {
+        ws.send(JSON.stringify({
+            seen: true,
+            message_id: lastUser2Msg,
+            username: "User2"
+        }));
+        lastUser2Msg = null;
+    }
+});
+</script>
+
+</body>
+</html>
